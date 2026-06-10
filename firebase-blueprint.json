@@ -1,0 +1,111 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile document containing details about the chat members.",
+      "type": "object",
+      "properties": {
+        "displayName": { "type": "string", "description": "The user's display name" },
+        "photoURL": { "type": "string", "description": "URL to the user's avatar image" },
+        "email": { "type": "string", "description": "The user's Google email" },
+        "bio": { "type": "string", "description": "A short bio about the user" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp of user creation" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Server timestamp of user update" }
+      },
+      "required": ["displayName", "email", "createdAt"]
+    },
+    "JoinedServer": {
+      "title": "JoinedServer",
+      "description": "Mapping from user to the servers they have joined.",
+      "type": "object",
+      "properties": {
+        "serverId": { "type": "string", "description": "ID of the joined server" },
+        "serverName": { "type": "string", "description": "Name of the joined server" },
+        "inviteCode": { "type": "string", "description": "Server's unique invite code" },
+        "joinedAt": { "type": "string", "format": "date-time", "description": "Timestamp when the user joined" }
+      },
+      "required": ["serverId", "serverName", "inviteCode", "joinedAt"]
+    },
+    "Server": {
+      "title": "Server",
+      "description": "A communication server/space created by a user.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "The name of the server" },
+        "ownerId": { "type": "string", "description": "The UID of the user who owns the server" },
+        "ownerName": { "type": "string", "description": "Display name of the server owner" },
+        "ownerPhoto": { "type": "string", "description": "Avatar url of the server owner" },
+        "description": { "type": "string", "description": "Short description of the server" },
+        "inviteCode": { "type": "string", "description": "Unique 8-character code for invites" },
+        "isPrivate": { "type": "boolean", "description": "Whether the server is invite-only/private or public" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp of creation" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Server timestamp of last update" }
+      },
+      "required": ["name", "ownerId", "inviteCode", "isPrivate", "createdAt"]
+    },
+    "Member": {
+      "title": "Member",
+      "description": "A user that is a member of a server.",
+      "type": "object",
+      "properties": {
+        "role": { "type": "string", "enum": ["owner", "member"], "description": "Role of the user in the server" },
+        "displayName": { "type": "string", "description": "Current display name of the member" },
+        "photoURL": { "type": "string", "description": "Current avatar url of the member" },
+        "joinedAt": { "type": "string", "format": "date-time", "description": "Timestamp when they joined" }
+      },
+      "required": ["role", "displayName", "joinedAt"]
+    },
+    "Room": {
+      "title": "Room",
+      "description": "A specific chat room/channel inside a server.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "The name of the room/channel" },
+        "serverId": { "type": "string", "description": "The ID of the parent server" },
+        "description": { "type": "string", "description": "Short room description" },
+        "ownerId": { "type": "string", "description": "To track who created this room" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp of room creation" }
+      },
+      "required": ["name", "serverId", "createdAt"]
+    },
+    "Message": {
+      "title": "Message",
+      "description": "A single chat message inside a chat room.",
+      "type": "object",
+      "properties": {
+        "senderId": { "type": "string", "description": "The UID of the sender" },
+        "senderName": { "type": "string", "description": "The display name of the sender at sending time" },
+        "senderPhoto": { "type": "string", "description": "The avatar photo of the sender" },
+        "content": { "type": "string", "description": "The rich content of the message" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp of the message" }
+      },
+      "required": ["senderId", "senderName", "content", "createdAt"]
+    }
+  },
+  "firestore": {
+    "users/{userId}": {
+      "schema": { "$ref": "User" },
+      "description": "User profiles database"
+    },
+    "users/{userId}/joinedServers/{serverId}": {
+      "schema": { "$ref": "JoinedServer" },
+      "description": "The index of servers that a specific user has joined"
+    },
+    "servers/{serverId}": {
+      "schema": { "$ref": "Server" },
+      "description": "Servers available on the platform"
+    },
+    "servers/{serverId}/members/{userId}": {
+      "schema": { "$ref": "Member" },
+      "description": "Server members roster"
+    },
+    "servers/{serverId}/rooms/{roomId}": {
+      "schema": { "$ref": "Room" },
+      "description": "Rooms under a given server"
+    },
+    "servers/{serverId}/rooms/{roomId}/messages/{messageId}": {
+      "schema": { "$ref": "Message" },
+      "description": "Real-time messages sent within the chat room"
+    }
+  }
+}

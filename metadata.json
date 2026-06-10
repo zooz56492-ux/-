@@ -1,0 +1,6 @@
+{
+  "name": "HamGap Online Chat",
+  "description": "An advanced online chat platform enabling users to create modern personal servers, public and private rooms with invite links, Google login, and real-time chat.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

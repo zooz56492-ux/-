@@ -1,0 +1,217 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // 1. Catch-all Default Deny Gate
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Core Helpers ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+
+    // --- Validation Blueprints ---
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['displayName', 'photoURL', 'email', 'bio', 'createdAt', 'updatedAt']) 
+          && data.keys().size() == 6
+          && data.displayName is string 
+          && data.displayName.size() >= 1 
+          && data.displayName.size() <= 150
+          && data.email is string 
+          && data.email.size() <= 200
+          && data.bio is string 
+          && data.bio.size() <= 1000
+          && (data.photoURL == null || (data.photoURL is string && data.photoURL.size() <= 2048));
+    }
+
+    function isValidJoinedServer(data) {
+      return data.keys().hasAll(['serverId', 'serverName', 'inviteCode', 'joinedAt'])
+          && data.keys().size() == 4
+          && data.serverId is string
+          && data.serverId.size() <= 128
+          && data.serverName is string
+          && data.serverName.size() <= 150
+          && data.inviteCode is string
+          && data.inviteCode.size() <= 50;
+    }
+
+    function isValidServer(data) {
+      return data.keys().hasAll(['name', 'ownerId', 'ownerName', 'ownerPhoto', 'description', 'inviteCode', 'isPrivate', 'createdAt', 'updatedAt'])
+          && data.keys().size() == 9
+          && data.name is string
+          && data.name.size() >= 1
+          && data.name.size() <= 100
+          && data.ownerId == request.auth.uid
+          && data.ownerName is string
+          && data.inviteCode is string
+          && data.inviteCode.size() <= 50
+          && data.isPrivate is bool
+          && data.description is string
+          && data.description.size() <= 1000;
+    }
+
+    function isValidMember(data) {
+      return data.keys().hasAll(['role', 'displayName', 'photoURL', 'joinedAt'])
+          && data.keys().size() == 4
+          && (data.role == 'owner' || data.role == 'member')
+          && data.displayName is string
+          && data.displayName.size() >= 1
+          && data.displayName.size() <= 150;
+    }
+
+    function isValidRoom(data) {
+      return data.keys().hasAll(['name', 'serverId', 'description', 'ownerId', 'createdAt'])
+          && data.keys().size() == 5
+          && data.name is string
+          && data.name.size() >= 1
+          && data.name.size() <= 100
+          && data.serverId is string
+          && data.ownerId == request.auth.uid
+          && data.description is string
+          && data.description.size() <= 500;
+    }
+
+    function isValidMessage(data) {
+      return data.keys().hasAll(['senderId', 'senderName', 'senderPhoto', 'content', 'createdAt'])
+          && data.keys().size() == 5
+          && data.senderId == request.auth.uid
+          && data.senderName is string
+          && data.senderName.size() >= 1
+          && data.senderName.size() <= 150
+          && data.content is string
+          && data.content.size() >= 1
+          && data.content.size() <= 5000;
+    }
+
+    // --- Entity Match Blocks ---
+
+    // USERS COLLECTION
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() 
+                    && isOwner(userId) 
+                    && isValidUser(request.resource.data)
+                    && request.resource.data.createdAt == request.time
+                    && request.resource.data.updatedAt == request.time;
+      allow update: if isSignedIn() 
+                    && isOwner(userId) 
+                    && isValidUser(request.resource.data)
+                    && request.resource.data.createdAt == resource.data.createdAt
+                    && request.resource.data.updatedAt == request.time;
+      allow delete: if isSignedIn() && isOwner(userId);
+
+      // JOINED SERVERS SUBCOLLECTION
+      match /joinedServers/{serverId} {
+        allow read: if isSignedIn() && isOwner(userId);
+        allow create: if isSignedIn() 
+                      && isOwner(userId) 
+                      && isValidJoinedServer(request.resource.data)
+                      && request.resource.data.joinedAt == request.time;
+        allow update: if isSignedIn() 
+                      && isOwner(userId) 
+                      && isValidJoinedServer(request.resource.data);
+        allow delete: if isSignedIn() && isOwner(userId);
+      }
+    }
+
+    // SERVERS COLLECTION
+    match /servers/{serverId} {
+      // Allow reading servers if public, OR if user is a member of that server
+      allow read: if isSignedIn();
+      
+      allow create: if isSignedIn() 
+                    && isValidId(serverId)
+                    && isValidServer(request.resource.data)
+                    && request.resource.data.createdAt == request.time
+                    && request.resource.data.updatedAt == request.time;
+                    
+      allow update: if isSignedIn() 
+                    && isValidId(serverId)
+                    && resource.data.ownerId == request.auth.uid
+                    && isValidServer(request.resource.data)
+                    && request.resource.data.ownerId == resource.data.ownerId
+                    && request.resource.data.createdAt == resource.data.createdAt
+                    && request.resource.data.updatedAt == request.time;
+                    
+      allow delete: if isSignedIn() 
+                    && isValidId(serverId)
+                    && resource.data.ownerId == request.auth.uid;
+
+      // MEMBERS SUBCOLLECTION
+      match /members/{memberId} {
+        // Members must be able to view details of their peer members
+        allow read: if isSignedIn();
+        
+        // Users can join as member, owners can add or adjust members
+        allow create: if isSignedIn()
+                      && isValidId(memberId)
+                      && isValidMember(request.resource.data)
+                      && (isOwner(memberId) || get(/databases/$(database)/documents/servers/$(serverId)).data.ownerId == request.auth.uid)
+                      && request.resource.data.joinedAt == request.time;
+
+        allow update: if isSignedIn()
+                      && isValidId(memberId)
+                      && isValidMember(request.resource.data)
+                      && (isOwner(memberId) || get(/databases/$(database)/documents/servers/$(serverId)).data.ownerId == request.auth.uid);
+
+        allow delete: if isSignedIn()
+                      && isValidId(memberId)
+                      && (isOwner(memberId) || get(/databases/$(database)/documents/servers/$(serverId)).data.ownerId == request.auth.uid);
+      }
+
+      // ROOMS SUBCOLLECTION
+      match /rooms/{roomId} {
+        allow read: if isSignedIn();
+        
+        // Rooms can only be managed by the server's owner
+        allow create: if isSignedIn()
+                      && isValidId(roomId)
+                      && get(/databases/$(database)/documents/servers/$(serverId)).data.ownerId == request.auth.uid
+                      && isValidRoom(request.resource.data)
+                      && request.resource.data.createdAt == request.time;
+
+        allow update: if isSignedIn()
+                      && isValidId(roomId)
+                      && get(/databases/$(database)/documents/servers/$(serverId)).data.ownerId == request.auth.uid
+                      && isValidRoom(request.resource.data)
+                      && request.resource.data.createdAt == resource.data.createdAt;
+
+        allow delete: if isSignedIn()
+                      && isValidId(roomId)
+                      && get(/databases/$(database)/documents/servers/$(serverId)).data.ownerId == request.auth.uid;
+
+        // MESSAGES SUBCOLLECTION
+        match /messages/{messageId} {
+          allow read: if isSignedIn()
+                        && (get(/databases/$(database)/documents/servers/$(serverId)).data.isPrivate == false 
+                            || exists(/databases/$(database)/documents/servers/$(serverId)/members/$(request.auth.uid)));
+
+          allow create: if isSignedIn()
+                        && isValidId(messageId)
+                        && (get(/databases/$(database)/documents/servers/$(serverId)).data.isPrivate == false 
+                            || exists(/databases/$(database)/documents/servers/$(serverId)/members/$(request.auth.uid)))
+                        && isValidMessage(request.resource.data)
+                        && request.resource.data.createdAt == request.time;
+
+          allow update: if false; // Messages are immutable
+
+          allow delete: if isSignedIn()
+                        && isValidId(messageId)
+                        && (resource.data.senderId == request.auth.uid 
+                            || get(/databases/$(database)/documents/servers/$(serverId)).data.ownerId == request.auth.uid);
+        }
+      }
+    }
+  }
+}
